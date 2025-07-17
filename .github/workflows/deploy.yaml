@@ -1,0 +1,52 @@
+name: CI/CD - React Docker Image → ECR → EC2
+
+on:
+  push:
+    branches: [main]
+
+env:
+  IMAGE_NAME: my-app
+  ECR_REGISTRY: 495599773901.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPO: my-app
+  REGION: us-east-1
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.REGION }}
+
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region $REGION | \
+          docker login --username AWS --password-stdin $ECR_REGISTRY
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t $IMAGE_NAME .
+          docker tag $IMAGE_NAME:latest $ECR_REGISTRY/$ECR_REPO:latest
+          docker push $ECR_REGISTRY/$ECR_REPO:latest
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region $REGION | \
+            docker login --username AWS --password-stdin $ECR_REGISTRY
+
+            docker stop $IMAGE_NAME || true
+            docker rm $IMAGE_NAME || true
+            docker pull $ECR_REGISTRY/$ECR_REPO:latest
+            docker run -d -p 80:80 --name $IMAGE_NAME $ECR_REGISTRY/$ECR_REPO:latest
