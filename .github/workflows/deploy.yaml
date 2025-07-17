@@ -11,7 +11,8 @@ env:
   REGION: us-east-1
 
 jobs:
-  build-and-deploy:
+  build:
+    name: Build Docker Image & Push to ECR
     runs-on: ubuntu-latest
 
     steps:
@@ -36,6 +37,12 @@ jobs:
           docker tag $IMAGE_NAME:latest $ECR_REGISTRY/$ECR_REPO:latest
           docker push $ECR_REGISTRY/$ECR_REPO:latest
 
+  deploy:
+    name: Deploy on EC2 from ECR
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
